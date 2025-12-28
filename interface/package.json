@@ -1,0 +1,43 @@
+{
+  "name": "interface",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@dynamic-labs/ethereum": "^4.51.2",
+    "@dynamic-labs/sdk-react-core": "^4.51.2",
+    "@dynamic-labs/wagmi-connector": "^4.51.2",
+    "@tanstack/react-query": "^5.90.12",
+    "@types/leaflet": "^1.9.21",
+    "better-sqlite3": "^12.5.0",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.45.1",
+    "leaflet": "^1.9.4",
+    "next": "16.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-leaflet": "^5.0.0",
+    "server-only": "^0.0.1",
+    "sonner": "^2.0.7",
+    "viem": "^2.43.2",
+    "wagmi": "^2.19.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

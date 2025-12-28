@@ -1,0 +1,1 @@
+DROP INDEX `provider_coverage_areas_provider_address_unique`;
