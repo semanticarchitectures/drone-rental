@@ -1,21 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { providerCoverageAreas, ratings } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
+import { createCoverageAreaSchema, updateCoverageAreaSchema, getCoverageAreasSchema } from "@/lib/validation/schemas";
+import { validationError, handleApiError, conflictError } from "@/lib/api/errors";
 
 const MAX_COVERAGE_AREAS = 3;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { providerAddress, locationLat, locationLng, radius } = body;
+    const validationResult = createCoverageAreaSchema.safeParse(body);
 
-    if (!providerAddress || locationLat === undefined || locationLng === undefined || !radius) {
-      return NextResponse.json(
-        { error: "Missing required fields: providerAddress, locationLat, locationLng, radius" },
-        { status: 400 }
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
       );
     }
+
+    const { providerAddress, locationLat, locationLng, radius } = validationResult.data;
 
     // Check how many coverage areas this provider already has
     const existingAreas = await db
@@ -24,10 +28,7 @@ export async function POST(request: NextRequest) {
       .where(eq(providerCoverageAreas.providerAddress, providerAddress));
 
     if (existingAreas.length >= MAX_COVERAGE_AREAS) {
-      return NextResponse.json(
-        { error: `Maximum ${MAX_COVERAGE_AREAS} coverage areas allowed per provider` },
-        { status: 400 }
-      );
+      return conflictError(`Maximum ${MAX_COVERAGE_AREAS} coverage areas allowed per provider`);
     }
 
     // Create new coverage area
@@ -41,24 +42,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, id: result.lastInsertRowid });
   } catch (error) {
     console.error("Error in /api/coverage-areas POST:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, locationLat, locationLng, radius } = body;
+    const validationResult = updateCoverageAreaSchema.safeParse(body);
 
-    if (!id || locationLat === undefined || locationLng === undefined || !radius) {
-      return NextResponse.json(
-        { error: "Missing required fields: id, locationLat, locationLng, radius" },
-        { status: 400 }
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
       );
     }
+
+    const { id, locationLat, locationLng, radius } = validationResult.data;
 
     // Update existing coverage area
     await db
@@ -74,10 +74,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/coverage-areas PUT:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -87,30 +84,39 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json(
-        { error: "Missing required parameter: id" },
-        { status: 400 }
-      );
+      return validationError("Missing required parameter: id");
+    }
+
+    const idNum = parseInt(id);
+    if (isNaN(idNum)) {
+      return validationError("Invalid id parameter");
     }
 
     await db
       .delete(providerCoverageAreas)
-      .where(eq(providerCoverageAreas.id, parseInt(id)));
+      .where(eq(providerCoverageAreas.id, idNum));
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/coverage-areas DELETE:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const providerAddress = searchParams.get("providerAddress");
+    const params = Object.fromEntries(searchParams.entries());
+    
+    const validationResult = getCoverageAreasSchema.safeParse(params);
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
+      );
+    }
+
+    const { providerAddress } = validationResult.data;
 
     if (providerAddress) {
       // Get all coverage areas for specific provider
@@ -122,30 +128,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ coverageAreas });
     } else {
       // Get all coverage areas (for consumer dashboard) with average ratings
+      // Optimized: Use SQL aggregation to avoid N+1 query problem
       const allCoverageAreas = await db.select().from(providerCoverageAreas);
-      
-      // Fetch average ratings for each provider (group by provider address)
-      const providerRatingsMap = new Map<string, { avg: number; count: number }>();
       
       // Get unique provider addresses
       const uniqueProviders = [...new Set(allCoverageAreas.map(a => a.providerAddress))];
       
-      // Fetch ratings for each provider
-      await Promise.all(
-        uniqueProviders.map(async (address) => {
-          const providerRatings = await db
-            .select()
-            .from(ratings)
-            .where(eq(ratings.providerAddress, address));
-          
-          const avgRating =
-            providerRatings.length > 0
-              ? providerRatings.reduce((sum, r) => sum + r.rating, 0) / providerRatings.length
-              : 0;
-          
-          providerRatingsMap.set(address, { avg: avgRating, count: providerRatings.length });
-        })
-      );
+      if (uniqueProviders.length === 0) {
+        return NextResponse.json({ coverageAreas: [] });
+      }
+
+      // Single query to get all ratings for these providers (more efficient than N queries)
+      // Fetch all ratings in one query, then aggregate in memory
+      const allRatings = await db
+        .select()
+        .from(ratings)
+        .where(inArray(ratings.providerAddress, uniqueProviders));
+      
+      // Aggregate in memory (still more efficient than N queries)
+      const providerRatingsMap = new Map<string, { avg: number; count: number }>();
+      uniqueProviders.forEach((address) => {
+        const providerRatings = allRatings.filter(r => r.providerAddress === address);
+        const avgRating = providerRatings.length > 0
+          ? providerRatings.reduce((sum, r) => sum + r.rating, 0) / providerRatings.length
+          : 0;
+        providerRatingsMap.set(address, { avg: avgRating, count: providerRatings.length });
+      });
       
       // Add ratings to each coverage area
       const coverageAreasWithRatings = allCoverageAreas.map((area) => {
@@ -161,10 +169,7 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error("Error in /api/coverage-areas GET:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 

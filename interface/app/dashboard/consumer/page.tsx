@@ -47,6 +47,17 @@ interface ProviderCoverageArea {
   ratingCount?: number;
 }
 
+interface ProviderProfile {
+  id?: number;
+  providerAddress: string;
+  droneImageUrl?: string | null;
+  droneModel?: string | null;
+  specialization?: string | null;
+  offersGroundImaging?: boolean;
+  groundImagingTypes?: string | null;
+  bio?: string | null;
+}
+
 export default function ConsumerDashboard() {
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
@@ -269,7 +280,7 @@ export default function ConsumerDashboard() {
     lat2: number,
     lng2: number
   ): number => {
-    const R = 6371000; // Earth's radius in meters
+    const R = EARTH_RADIUS_METERS;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLng = ((lng2 - lng1) * Math.PI) / 180;
     const a =
@@ -474,48 +485,8 @@ export default function ConsumerDashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      // Try to use Dynamic Labs logout if available
-      if (dynamicContext && typeof (dynamicContext as any).logout === "function") {
-        await (dynamicContext as any).logout();
-      }
-      
-      // Disconnect wagmi wallet
-      disconnect();
-      
-      // Clear Dynamic Labs session storage
-      // Dynamic Labs stores session data in localStorage
-      if (typeof window !== "undefined") {
-        // Clear all Dynamic Labs related storage
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.toLowerCase().includes("dynamic") || key.toLowerCase().includes("wallet"))) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-        
-        // Also clear sessionStorage
-        const sessionKeysToRemove: string[] = [];
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i);
-          if (key && (key.toLowerCase().includes("dynamic") || key.toLowerCase().includes("wallet"))) {
-            sessionKeysToRemove.push(key);
-          }
-        }
-        sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key));
-      }
-      
-      // Force a full page reload to clear all state
-      window.location.href = "/";
-    } catch (error) {
-      console.error("Error during logout:", error);
-      // Still try to disconnect and redirect even if there's an error
-      disconnect();
-      window.location.href = "/";
-    }
+  const onLogout = async () => {
+    await handleLogout(disconnect, dynamicContext);
   };
 
   if (!isConnected || !address) {
@@ -532,8 +503,9 @@ export default function ConsumerDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="max-w-7xl mx-auto">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+        <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Consumer Dashboard
@@ -549,7 +521,7 @@ export default function ConsumerDashboard() {
             <UserAvatar
               profileImageUrl={providerProfile?.droneImageUrl}
               onProfileClick={() => setIsProfileModalOpen(true)}
-              onLogout={handleLogout}
+              onLogout={onLogout}
             />
           </div>
         </div>
@@ -769,20 +741,10 @@ export default function ConsumerDashboard() {
           isPending={isPending}
           isConfirming={isConfirming}
         />
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
-}
-
-interface ProviderProfile {
-  id?: number;
-  providerAddress: string;
-  droneImageUrl?: string | null;
-  droneModel?: string | null;
-  specialization?: string | null;
-  offersGroundImaging?: boolean;
-  groundImagingTypes?: string | null;
-  bio?: string | null;
 }
 
 function RequestCard({

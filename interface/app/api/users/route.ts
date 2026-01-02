@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { requireWalletAuth } from "@/lib/middleware/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Verify wallet authentication (optional for user creation, but recommended)
+    // For now, we'll allow it without auth for initial user setup
+    // In production, you may want to require auth here
 
     // Check if user exists
     const existingUser = await db
@@ -38,10 +43,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/users:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -51,10 +53,12 @@ export async function GET(request: NextRequest) {
     const walletAddress = searchParams.get("walletAddress");
 
     if (!walletAddress) {
-      return NextResponse.json(
-        { error: "Missing walletAddress" },
-        { status: 400 }
-      );
+      return validationError("Missing walletAddress parameter");
+    }
+
+    // Validate wallet address format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      return validationError("Invalid wallet address format");
     }
 
     const user = await db
@@ -70,10 +74,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ user: user[0] });
   } catch (error) {
     console.error("Error in /api/users GET:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 

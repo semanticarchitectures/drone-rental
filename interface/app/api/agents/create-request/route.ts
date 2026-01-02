@@ -8,10 +8,18 @@ import { requests } from "@/db/schema";
 
 export async function POST(request: NextRequest) {
   try {
+    // Check for API key authentication (for agent routes)
+    const apiKey = request.headers.get("x-api-key");
+    if (apiKey !== process.env.AGENT_API_KEY) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const {
       walletAddress,
-      privateKey,
       title,
       description,
       locationLat,
@@ -20,14 +28,23 @@ export async function POST(request: NextRequest) {
       deadline,
     } = body;
 
-    if (!privateKey || !title || !description || !locationLat || !locationLng || !budget || !deadline) {
+    if (!title || !description || !locationLat || !locationLng || !budget || !deadline) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const account = privateKeyToAccount(`0x${privateKey.replace(/^0x/, "")}` as `0x${string}`);
+    // Use environment variable for agent private key
+    const agentPrivateKey = process.env.AGENT_PRIVATE_KEY;
+    if (!agentPrivateKey) {
+      return NextResponse.json(
+        { error: "Agent private key not configured" },
+        { status: 500 }
+      );
+    }
+
+    const account = privateKeyToAccount(`0x${agentPrivateKey.replace(/^0x/, "")}` as `0x${string}`);
     const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
     
     const walletClient = createWalletClient({
@@ -64,9 +81,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Save to database
+    // Use walletAddress from body if provided, otherwise use account address
+    const consumerAddress = walletAddress || account.address;
     await db.insert(requests).values({
       requestId,
-      consumerAddress: account.address,
+      consumerAddress,
       title,
       description,
       locationLat: parseFloat(locationLat),

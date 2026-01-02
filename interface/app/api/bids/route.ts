@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { bids } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
+import { createBidSchema, getBidsSchema } from "@/lib/validation/schemas";
+import { validationError, handleApiError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const validationResult = createBidSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
+      );
+    }
+
     const {
       bidId,
       requestId,
@@ -13,14 +24,7 @@ export async function POST(request: NextRequest) {
       amount,
       timeline,
       status = "pending",
-    } = body;
-
-    if (!bidId || !requestId || !providerAddress || !amount || !timeline) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
-    }
+    } = validationResult.data;
 
     const result = await db.insert(bids).values({
       bidId,
@@ -34,38 +38,57 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, id: result.lastInsertRowid });
   } catch (error) {
     console.error("Error in /api/bids POST:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const requestId = searchParams.get("requestId");
-    const providerAddress = searchParams.get("providerAddress");
+    const params = Object.fromEntries(searchParams.entries());
+    
+    const validationResult = getBidsSchema.safeParse(params);
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
+      );
+    }
+
+    const { requestId, providerAddress, page, limit } = validationResult.data;
+    const offset = (page - 1) * limit;
 
     let query = db.select().from(bids).orderBy(desc(bids.createdAt));
 
+    // Build where conditions
+    const conditions = [];
     if (requestId) {
-      query = query.where(eq(bids.requestId, parseInt(requestId))) as any;
+      conditions.push(eq(bids.requestId, requestId));
+    }
+    if (providerAddress) {
+      conditions.push(eq(bids.providerAddress, providerAddress));
     }
 
-    if (providerAddress) {
-      query = query.where(eq(bids.providerAddress, providerAddress)) as any;
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
     }
 
     const allBids = await query;
+    const total = allBids.length;
+    const paginatedBids = allBids.slice(offset, offset + limit);
 
-    return NextResponse.json({ bids: allBids });
+    return NextResponse.json({
+      bids: paginatedBids,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     console.error("Error in /api/bids GET:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 

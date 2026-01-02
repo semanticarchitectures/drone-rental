@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import UserTypeSwitcher from "@/components/UserTypeSwitcher";
 import UserAvatar from "@/components/UserAvatar";
 import ProfileEditModal from "@/components/ProfileEditModal";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { toast } from "sonner";
 
 interface Request {
@@ -299,48 +300,8 @@ export default function ProviderDashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      // Try to use Dynamic Labs logout if available
-      if (dynamicContext && typeof (dynamicContext as any).logout === "function") {
-        await (dynamicContext as any).logout();
-      }
-      
-      // Disconnect wagmi wallet
-      disconnect();
-      
-      // Clear Dynamic Labs session storage
-      // Dynamic Labs stores session data in localStorage
-      if (typeof window !== "undefined") {
-        // Clear all Dynamic Labs related storage
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.toLowerCase().includes("dynamic") || key.toLowerCase().includes("wallet"))) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-        
-        // Also clear sessionStorage
-        const sessionKeysToRemove: string[] = [];
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i);
-          if (key && (key.toLowerCase().includes("dynamic") || key.toLowerCase().includes("wallet"))) {
-            sessionKeysToRemove.push(key);
-          }
-        }
-        sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key));
-      }
-      
-      // Force a full page reload to clear all state
-      window.location.href = "/";
-    } catch (error) {
-      console.error("Error during logout:", error);
-      // Still try to disconnect and redirect even if there's an error
-      disconnect();
-      window.location.href = "/";
-    }
+  const onLogout = async () => {
+    await handleLogout(disconnect, dynamicContext);
   };
 
   if (!isConnected || !address) {
@@ -363,7 +324,7 @@ export default function ProviderDashboard() {
       ? [coverageAreas[0].locationLat, coverageAreas[0].locationLng]
       : requests.length > 0
       ? [requests[0].locationLat, requests[0].locationLng]
-      : [40.7128, -74.0060];
+      : DEFAULT_MAP_CENTER;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
@@ -377,7 +338,7 @@ export default function ProviderDashboard() {
             <UserAvatar
               profileImageUrl={profile?.droneImageUrl}
               onProfileClick={() => setIsProfileModalOpen(true)}
-              onLogout={handleLogout}
+              onLogout={onLogout}
             />
           </div>
         </div>

@@ -2,19 +2,29 @@
  * Agent simulation script
  * 
  * Usage:
- *   node scripts/agent.ts create-request --privateKey <key> --title "Test" --description "Test" --lat 40.7128 --lng -74.0060 --budget 0.1 --deadline "2024-12-31T23:59:59Z"
- *   node scripts/agent.ts submit-bid --privateKey <key> --requestId 1 --amount 0.08 --timeline 7
- *   node scripts/agent.ts accept-bid --privateKey <key> --requestId 1 --bidId 1 --amount 0.08
- *   node scripts/agent.ts deliver-job --privateKey <key> --requestId 1
- *   node scripts/agent.ts approve-delivery --privateKey <key> --requestId 1
+ *   Set AGENT_API_KEY environment variable before running
+ *   node scripts/agent.ts create-request --walletAddress <address> --title "Test" --description "Test" --lat 40.7128 --lng -74.0060 --budget 0.1 --deadline "2024-12-31T23:59:59Z"
+ *   node scripts/agent.ts submit-bid --requestId 1 --amount 0.08 --timeline 7
+ *   node scripts/agent.ts accept-bid --requestId 1 --bidId 1 --amount 0.08
+ *   node scripts/agent.ts deliver-job --requestId 1
+ *   node scripts/agent.ts approve-delivery --requestId 1
  */
 
 const API_BASE = process.env.API_BASE || "http://localhost:3000";
+const API_KEY = process.env.AGENT_API_KEY;
+
+if (!API_KEY) {
+  console.error("Error: AGENT_API_KEY environment variable is required");
+  process.exit(1);
+}
 
 async function callAgentEndpoint(endpoint: string, data: any) {
   const response = await fetch(`${API_BASE}/api/agents/${endpoint}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "x-api-key": API_KEY,
+    },
     body: JSON.stringify(data),
   });
 
@@ -43,7 +53,6 @@ async function main() {
   switch (command) {
     case "create-request":
       await callAgentEndpoint("create-request", {
-        privateKey: args.privateKey,
         walletAddress: args.walletAddress,
         title: args.title,
         description: args.description,
@@ -56,7 +65,6 @@ async function main() {
 
     case "submit-bid":
       await callAgentEndpoint("submit-bid", {
-        privateKey: args.privateKey,
         requestId: args.requestId,
         amount: args.amount,
         timeline: args.timeline,
@@ -65,7 +73,6 @@ async function main() {
 
     case "accept-bid":
       await callAgentEndpoint("accept-bid", {
-        privateKey: args.privateKey,
         requestId: args.requestId,
         bidId: args.bidId,
         amount: args.amount,
@@ -74,14 +81,12 @@ async function main() {
 
     case "deliver-job":
       await callAgentEndpoint("deliver-job", {
-        privateKey: args.privateKey,
         requestId: args.requestId,
       });
       break;
 
     case "approve-delivery":
       await callAgentEndpoint("approve-delivery", {
-        privateKey: args.privateKey,
         requestId: args.requestId,
       });
       break;

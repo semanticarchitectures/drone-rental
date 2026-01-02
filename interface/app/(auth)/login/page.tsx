@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
@@ -49,13 +49,7 @@ export default function LoginPage() {
     checkExistingUser();
   }, [isAuthenticated, address, primaryWallet, router]);
 
-  useEffect(() => {
-    if (isAuthenticated && address && userType && !isSubmitting) {
-      handleUserTypeSubmit();
-    }
-  }, [isAuthenticated, address, userType]);
-
-  const handleUserTypeSubmit = async () => {
+  const handleUserTypeSubmit = useCallback(async () => {
     const walletAddr = address || primaryWallet?.address;
     if (!walletAddr || !userType || isSubmitting) return;
 
@@ -84,7 +78,13 @@ export default function LoginPage() {
       console.error("Error saving user type:", error);
       setIsSubmitting(false);
     }
-  };
+  }, [isAuthenticated, address, primaryWallet, userType, isSubmitting, router]);
+
+  useEffect(() => {
+    if (isAuthenticated && address && userType && !isSubmitting) {
+      handleUserTypeSubmit();
+    }
+  }, [isAuthenticated, address, userType, isSubmitting, handleUserTypeSubmit]);
 
   const handleConnect = () => {
     // Use setShowAuthFlow to open the Dynamic auth modal

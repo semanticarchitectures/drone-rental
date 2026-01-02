@@ -8,6 +8,7 @@ import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
 import { DynamicWagmiConnector } from "@dynamic-labs/wagmi-connector";
 import { EthereumWalletConnectors } from "@dynamic-labs/ethereum";
 import { Toaster } from "sonner";
+import { DEFAULT_CHAIN_ID } from "@/lib/constants";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // Create QueryClient inside component to avoid sharing between requests
@@ -24,8 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       settings={{
         environmentId: process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID || "",
         walletConnectors: [EthereumWalletConnectors],
-        // Override default chain to use Anvil for local development
-        defaultChainId: 31337,
+        defaultChainId: DEFAULT_CHAIN_ID,
         appName: "Drone Rental Platform",
       }}
     >

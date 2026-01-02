@@ -2,25 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { ratings } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { createRatingSchema } from "@/lib/validation/schemas";
+import { validationError, handleApiError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { providerAddress, consumerAddress, requestId, rating, comment } = body;
+    const validationResult = createRatingSchema.safeParse(body);
 
-    if (!providerAddress || !consumerAddress || !requestId || !rating) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
       );
     }
 
-    if (rating < 1 || rating > 5) {
-      return NextResponse.json(
-        { error: "Rating must be between 1 and 5" },
-        { status: 400 }
-      );
-    }
+    const { providerAddress, consumerAddress, requestId, rating, comment } = validationResult.data;
 
     await db.insert(ratings).values({
       providerAddress,
@@ -33,10 +30,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/ratings POST:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -46,10 +40,12 @@ export async function GET(request: NextRequest) {
     const providerAddress = searchParams.get("providerAddress");
 
     if (!providerAddress) {
-      return NextResponse.json(
-        { error: "Missing providerAddress" },
-        { status: 400 }
-      );
+      return validationError("Missing providerAddress parameter");
+    }
+
+    // Validate wallet address format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(providerAddress)) {
+      return validationError("Invalid wallet address format");
     }
 
     const allRatings = await db
@@ -69,10 +65,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in /api/ratings GET:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 

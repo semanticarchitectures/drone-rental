@@ -2,18 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { consumerAreasOfInterest } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { createAreaOfInterestSchema, getAreaOfInterestSchema } from "@/lib/validation/schemas";
+import { validationError, handleApiError } from "@/lib/api/errors";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { consumerAddress, locationLat, locationLng, radius } = body;
+    const validationResult = createAreaOfInterestSchema.safeParse(body);
 
-    if (!consumerAddress || locationLat === undefined || locationLng === undefined || !radius) {
-      return NextResponse.json(
-        { error: "Missing required fields: consumerAddress, locationLat, locationLng, radius" },
-        { status: 400 }
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
       );
     }
+
+    const { consumerAddress, locationLat, locationLng, radius } = validationResult.data;
 
     // Check if area of interest exists for this consumer
     const existing = await db
@@ -46,19 +50,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/areas-of-interest POST:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const params = Object.fromEntries(searchParams.entries());
+    
+    const validationResult = getAreaOfInterestSchema.safeParse(params);
+    if (!validationResult.success && searchParams.has("consumerAddress")) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
+      );
+    }
+
     const consumerAddress = searchParams.get("consumerAddress");
 
     if (consumerAddress) {
+      // Validate wallet address format
+      if (!/^0x[a-fA-F0-9]{40}$/.test(consumerAddress)) {
+        return validationError("Invalid wallet address format");
+      }
       // Get area of interest for specific consumer
       const areaOfInterest = await db
         .select()
@@ -78,10 +93,7 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error("Error in /api/areas-of-interest GET:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -91,10 +103,12 @@ export async function DELETE(request: NextRequest) {
     const consumerAddress = searchParams.get("consumerAddress");
 
     if (!consumerAddress) {
-      return NextResponse.json(
-        { error: "Missing required parameter: consumerAddress" },
-        { status: 400 }
-      );
+      return validationError("Missing required parameter: consumerAddress");
+    }
+
+    // Validate wallet address format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(consumerAddress)) {
+      return validationError("Invalid wallet address format");
     }
 
     await db
@@ -104,10 +118,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/areas-of-interest DELETE:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 

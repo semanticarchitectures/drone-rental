@@ -2,18 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { providerProfiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getProviderProfileSchema, createProviderProfileSchema, updateProviderProfileSchema } from "@/lib/validation/schemas";
+import { validationError, handleApiError, conflictError } from "@/lib/api/errors";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const providerAddress = searchParams.get("providerAddress");
-
-    if (!providerAddress) {
-      return NextResponse.json(
-        { error: "Missing required parameter: providerAddress" },
-        { status: 400 }
+    const params = Object.fromEntries(searchParams.entries());
+    
+    const validationResult = getProviderProfileSchema.safeParse(params);
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
       );
     }
+
+    const { providerAddress } = validationResult.data;
 
     const profile = await db
       .select()
@@ -28,16 +33,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ profile: profile[0] });
   } catch (error) {
     console.error("Error in /api/provider-profiles GET:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const validationResult = createProviderProfileSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
+      );
+    }
+
     const {
       providerAddress,
       droneImageUrl,
@@ -46,14 +57,7 @@ export async function POST(request: NextRequest) {
       offersGroundImaging,
       groundImagingTypes,
       bio,
-    } = body;
-
-    if (!providerAddress) {
-      return NextResponse.json(
-        { error: "Missing required field: providerAddress" },
-        { status: 400 }
-      );
-    }
+    } = validationResult.data;
 
     // Check if profile already exists
     const existingProfile = await db
@@ -63,10 +67,7 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (existingProfile.length > 0) {
-      return NextResponse.json(
-        { error: "Profile already exists. Use PUT to update." },
-        { status: 400 }
-      );
+      return conflictError("Profile already exists. Use PUT to update.");
     }
 
     // Create new profile
@@ -83,16 +84,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, id: result.lastInsertRowid });
   } catch (error) {
     console.error("Error in /api/provider-profiles POST:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
+    const validationResult = updateProviderProfileSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return validationError(
+        "Validation failed",
+        validationResult.error.errors
+      );
+    }
+
     const {
       providerAddress,
       droneImageUrl,
@@ -101,14 +108,7 @@ export async function PUT(request: NextRequest) {
       offersGroundImaging,
       groundImagingTypes,
       bio,
-    } = body;
-
-    if (!providerAddress) {
-      return NextResponse.json(
-        { error: "Missing required field: providerAddress" },
-        { status: 400 }
-      );
-    }
+    } = validationResult.data;
 
     // Check if profile exists
     const existingProfile = await db
@@ -148,10 +148,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in /api/provider-profiles PUT:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
